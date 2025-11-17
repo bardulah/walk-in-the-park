@@ -134,14 +134,17 @@ class UnifiedLLMRouter:
 
         data = response.json()
 
-        # Extract text
+        # Extract text from Gemini response
+        # Expected format: {candidates: [{content: {parts: [{text: "..."}]}, finishReason: "STOP"}], usageMetadata: {...}}
         if "candidates" in data and len(data["candidates"]) > 0:
             candidate = data["candidates"][0]
             if "content" in candidate and "parts" in candidate["content"]:
-                text = candidate["content"]["parts"][0].get("text", "")
-                return text
+                parts = candidate["content"]["parts"]
+                if len(parts) > 0 and "text" in parts[0]:
+                    return parts[0]["text"]
 
-        raise ValueError(f"Unexpected Gemini response format: {data}")
+        # If we get here, response format is unexpected
+        raise ValueError(f"Unexpected Gemini response format. Got: {json.dumps(data, indent=2)[:500]}")
 
     def _call_openrouter(
         self,

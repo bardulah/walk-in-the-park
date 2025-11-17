@@ -88,41 +88,50 @@ class Trading212API:
         """
         try:
             # Get account and portfolio
-            account = self.get_account_info()
-            positions = self.get_portfolio()
+            account = self.get_account_info()  # Returns: {free, total, invested, ppl, blocked, pieCash, result}
+            positions = self.get_portfolio()    # Returns: [{ticker, quantity, averagePrice, currentPrice, ppl, ...}]
 
             # Format positions
             formatted_positions = []
             total_value = 0.0
 
             for pos in positions:
+                # Trading 212 response fields: averagePrice, currentPrice, quantity, ppl, ticker
                 current_value = pos.get('currentPrice', 0) * pos.get('quantity', 0)
                 avg_cost = pos.get('averagePrice', 0)
-                invested = avg_cost * pos.get('quantity', 0)
-                unrealized_pnl = current_value - invested
+                quantity = pos.get('quantity', 0)
+                invested = avg_cost * quantity
+
+                # ppl field is already the unrealized P&L from Trading 212
+                unrealized_pnl = pos.get('ppl', 0)
                 unrealized_pnl_pct = (unrealized_pnl / invested * 100) if invested > 0 else 0
 
                 formatted_positions.append({
                     'ticker': pos.get('ticker', ''),
-                    'quantity': pos.get('quantity', 0),
+                    'quantity': quantity,
                     'avg_cost': avg_cost,
                     'current_price': pos.get('currentPrice', 0),
                     'market_value': current_value,
                     'unrealized_pnl': unrealized_pnl,
-                    'unrealized_pnl_pct': round(unrealized_pnl_pct, 2)
+                    'unrealized_pnl_pct': round(unrealized_pnl_pct, 2),
+                    'initial_fill_date': pos.get('initialFillDate'),  # ISO 8601 timestamp
                 })
 
                 total_value += current_value
 
+            # Account cash fields: free (available), total (account value), invested, ppl (total P&L)
             cash_balance = account.get('free', 0)
-            account_value = total_value + cash_balance
+            account_value = account.get('total', total_value + cash_balance)  # Use total from API
+            total_pnl = account.get('ppl', 0)
 
             return {
                 'positions': formatted_positions,
                 'total_value': round(total_value, 2),
                 'cash_balance': round(cash_balance, 2),
                 'account_value': round(account_value, 2),
-                'currency': account.get('currency', 'USD'),
+                'total_pnl': round(total_pnl, 2),  # Overall account P&L
+                'invested': round(account.get('invested', 0), 2),  # Total invested capital
+                'blocked': round(account.get('blocked', 0), 2),  # Cash reserved for orders
                 'timestamp': datetime.now().isoformat(),
                 'source': f'Trading212-{self.mode}'
             }

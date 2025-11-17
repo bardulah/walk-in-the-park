@@ -45,7 +45,7 @@ class ADKAgent:
             # Create prompt with system instructions + context
             full_prompt = f"{self.system_prompt}\n\nContext:\n{context}"
 
-            # Generate response
+            # Generate response using Google GenAI
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=full_prompt,
@@ -55,7 +55,19 @@ class ADKAgent:
                 )
             )
 
-            return response.text
+            # Extract text from Gemini response structure:
+            # response format: {candidates: [{content: {parts: [{text: "..."}]}}]}
+            if hasattr(response, 'text'):
+                # Direct access if available
+                return response.text
+            elif hasattr(response, 'candidates') and len(response.candidates) > 0:
+                # Parse response structure
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
+                    return candidate.content.parts[0].text
+
+            # Fallback
+            return str(response)
 
         except Exception as e:
             print(f"   ❌ {self.name} failed: {e}")
