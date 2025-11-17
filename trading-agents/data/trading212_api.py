@@ -10,15 +10,17 @@ from datetime import datetime
 class Trading212API:
     """Interface to Trading 212 API"""
 
-    def __init__(self, api_key: str, mode: str = "live"):
+    def __init__(self, api_key: str, api_secret: str, mode: str = "live"):
         """
         Initialize Trading 212 API client
 
         Args:
-            api_key: Trading 212 API key
+            api_key: Trading 212 API key ID
+            api_secret: Trading 212 API secret key
             mode: "live" or "demo" (default: live)
         """
         self.api_key = api_key
+        self.api_secret = api_secret
         self.mode = mode
 
         # API endpoints
@@ -27,8 +29,10 @@ class Trading212API:
         else:
             self.base_url = "https://live.trading212.com/api/v0"
 
+        # Trading 212 uses API key ID as Authorization header
         self.headers = {
             "Authorization": api_key,
+            "X-API-Secret": api_secret,
             "Content-Type": "application/json"
         }
 

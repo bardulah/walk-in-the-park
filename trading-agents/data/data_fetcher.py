@@ -10,21 +10,22 @@ from data.mock_data import MockDataGenerator
 class HybridDataFetcher:
     """Fetches data from real APIs with mock fallback"""
 
-    def __init__(self, trading_212_api_key: str, use_mock: bool = False):
+    def __init__(self, trading_212_api_key: str, trading_212_api_secret: str, use_mock: bool = False):
         """
         Initialize hybrid fetcher
 
         Args:
-            trading_212_api_key: Trading 212 API key
+            trading_212_api_key: Trading 212 API key ID
+            trading_212_api_secret: Trading 212 API secret key
             use_mock: Force mock data (for testing)
         """
         self.use_mock = use_mock
         self.trading_api = None
         self.mock_data = MockDataGenerator()
 
-        if not use_mock and trading_212_api_key:
+        if not use_mock and trading_212_api_key and trading_212_api_secret:
             try:
-                self.trading_api = Trading212API(trading_212_api_key, mode='live')
+                self.trading_api = Trading212API(trading_212_api_key, trading_212_api_secret, mode='live')
             except Exception as e:
                 print(f"⚠️  Trading 212 API initialization failed: {e}")
 

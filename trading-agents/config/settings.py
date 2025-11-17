@@ -11,6 +11,7 @@ class APIConfig:
     """API credentials and endpoints"""
     # Trading
     trading_212_api_key: str
+    trading_212_api_secret: str
 
     # AI/LLM
     gemini_api_key: str
@@ -54,7 +55,8 @@ def load_config() -> tuple[APIConfig, AgentConfig]:
     """Load configuration from environment variables"""
 
     api_config = APIConfig(
-        trading_212_api_key=os.getenv('212_TRADING_API_KEY', ''),
+        trading_212_api_key=os.getenv('212_TRADING_API_KEY_ID', ''),
+        trading_212_api_secret=os.getenv('212_TRADING_API_SECRET_KEY', ''),
         gemini_api_key=os.getenv('GEMINI_API_KEY', ''),
         openrouter_api_key=os.getenv('OPENROUTER_API_KEY', ''),
         anthropic_api_key=os.getenv('ANTHROPIC_API_KEY'),
