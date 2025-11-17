@@ -1,6 +1,6 @@
 """
-Orchestrator V2 - Full 6-Agent System
-Coordinates all agents and generates comprehensive trading recommendations including CFDs
+Orchestrator V2 - Full 6-Agent System + Stock Screener
+Coordinates all agents and generates comprehensive trading recommendations including new stock picks
 """
 import sys
 import os
@@ -16,14 +16,15 @@ from agents.market_analyst import MarketAnalyst
 from agents.news_monitor import NewsMonitor
 from agents.technical_analyst import TechnicalAnalyst
 from agents.risk_manager import RiskManager
+from agents.stock_screener import StockScreener
 
 
 class OrchestratorV2:
-    """Orchestrates 6-agent trading system with CFD support"""
+    """Orchestrates 7-agent trading system with stock screening and CFD support"""
 
     def __init__(self, llm_router: UnifiedLLMRouter):
         """
-        Initialize Orchestrator with all 6 agents
+        Initialize Orchestrator with all 7 agents
 
         Args:
             llm_router: Unified LLM router
@@ -35,6 +36,7 @@ class OrchestratorV2:
         self.market_analyst = MarketAnalyst(llm_router)
         self.news_monitor = NewsMonitor(llm_router)
         self.technical_analyst = TechnicalAnalyst(llm_router)
+        self.stock_screener = StockScreener(llm_router)
         self.risk_manager = RiskManager(llm_router)
 
         self.orchestrator_model = "claude-3-5-sonnet"  # Best model for final decisions
@@ -60,7 +62,7 @@ class OrchestratorV2:
         print("  MULTI-AGENT TRADING SYSTEM - DAILY ANALYSIS")
         print("="*60)
 
-        print("\n[STAGE 1] Running Foundational Analysis (4 agents in parallel)...\n")
+        print("\n[STAGE 1] Running Foundational Analysis (5 agents in parallel)...\n")
 
         # Stage 1: Run foundational agents
         portfolio_analysis = self.portfolio_analyst.analyze(portfolio_data)
@@ -77,6 +79,9 @@ class OrchestratorV2:
         news_analysis = self.news_monitor.analyze(portfolio_data, news_data)
         technical_analysis = self.technical_analyst.analyze(portfolio_data, market_data)
 
+        # Run stock screener for new opportunities
+        stock_opportunities = self.stock_screener.screen(portfolio_data, market_analysis, news_analysis)
+
         print("\n[STAGE 2] Generating preliminary recommendations...\n")
 
         # Stage 2: Generate preliminary recommendations
@@ -84,7 +89,8 @@ class OrchestratorV2:
             portfolio_analysis,
             market_analysis,
             news_analysis,
-            technical_analysis
+            technical_analysis,
+            stock_opportunities  # Add stock screening results
         )
 
         print(f"   ✓ Generated {len(preliminary_recs)} preliminary recommendations\n")
@@ -169,17 +175,19 @@ class OrchestratorV2:
         portfolio_analysis: Dict[str, Any],
         market_analysis: Dict[str, Any],
         news_analysis: Dict[str, Any],
-        technical_analysis: Dict[str, Any]
+        technical_analysis: Dict[str, Any],
+        stock_opportunities: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Generate preliminary recommendations from all agents"""
+        """Generate preliminary recommendations from all agents INCLUDING new stock picks"""
 
-        system_prompt = """You are the Orchestrator, synthesizing inputs from 4 specialized agents to generate preliminary trading recommendations.
+        system_prompt = """You are the Orchestrator, synthesizing inputs from 5 specialized agents to generate comprehensive trading recommendations.
 
 Your role:
-1. Combine Portfolio, Market, News, and Technical analysis
-2. Generate 1-5 actionable recommendations
-3. Each recommendation must align multiple agent signals
-4. Be specific and data-driven
+1. Combine Portfolio, Market, News, Technical, and Stock Screener analysis
+2. Generate portfolio actions (REDUCE/SELL existing positions)
+3. Generate BUY recommendations for new stocks
+4. Each recommendation must align multiple agent signals
+5. Prioritize diversification and risk management
 
 Output strict JSON:
 {
@@ -189,10 +197,11 @@ Output strict JSON:
       "action": "BUY|SELL|HOLD|REDUCE",
       "priority": "HIGH|MEDIUM|LOW",
       "confidence": 0-100,
-      "reasoning": "Synthesize all agent inputs into clear rationale"
+      "reasoning": "Synthesize all agent inputs into clear rationale",
+      "position_size_pct": 5-15  // For BUY actions
     }
   ]
-}"""
+}""""""
 
         user_prompt = f"""Synthesize agent outputs into preliminary recommendations.
 
@@ -219,7 +228,18 @@ Market Condition: {technical_analysis.get('market_technical_condition', 'N/A')}
 {json.dumps([{'ticker': t['ticker'], 'signal': t['technical_signal'], 'trend': t['trend']}
              for t in technical_analysis.get('ticker_analysis', [])], indent=2)}
 
-Generate 1-5 high-conviction recommendations that synthesize all signals."""
+STOCK SCREENER - NEW OPPORTUNITIES:
+Buy Opportunities: {len(stock_opportunities.get('buy_opportunities', []))}
+{json.dumps(stock_opportunities.get('buy_opportunities', [])[:5], indent=2)}
+
+Sector Allocation: {json.dumps(stock_opportunities.get('sector_allocation', {}), indent=2)}
+Top Picks: {json.dumps(stock_opportunities.get('top_picks', []))}
+
+Generate comprehensive recommendations:
+1. PORTFOLIO ACTIONS: REDUCE/SELL overconcentrated or weak positions
+2. NEW STOCK BUYS: High-conviction opportunities from Stock Screener
+3. Aim for 3-7 total recommendations (mix of sells and buys)
+4. For BUY actions, include position_size_pct (5-15% of portfolio)"""
 
         print(f"🎯 Orchestrator synthesizing agent inputs...")
 
