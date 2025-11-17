@@ -106,12 +106,13 @@ class OrchestratorV2:
 
         print("[STAGE 4] Generating CFD trading opportunities...\n")
 
-        # Stage 4: Generate CFD recommendations for daily trading
+        # Stage 4: Generate CFD recommendations for daily trading (indices + stocks)
         cfd_recommendations = self._generate_cfd_recommendations(
             market_analysis,
             news_analysis,
             technical_analysis,
-            risk_assessment
+            risk_assessment,
+            stock_opportunities  # Include for stock CFD ideas
         )
 
         print(f"   ✓ Generated {len(cfd_recommendations)} CFD opportunities\n")
@@ -260,30 +261,34 @@ Generate comprehensive recommendations:
         market_analysis: Dict[str, Any],
         news_analysis: Dict[str, Any],
         technical_analysis: Dict[str, Any],
-        risk_assessment: Dict[str, Any]
+        risk_assessment: Dict[str, Any],
+        stock_opportunities: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Generate CFD trading opportunities for daily trades"""
+        """Generate CFD trading opportunities for daily trades (indices + individual stocks)"""
 
         system_prompt = """You are a CFD Trading Specialist generating intraday/short-term trading opportunities.
 
 CFD Trading Focus:
 - Short-term momentum trades (hours to days, not weeks)
 - Both LONG and SHORT opportunities
-- High-volume, liquid instruments
-- Clear entry/exit levels
-- Tight stop-losses
+- INDICES (SPY, QQQ, IWM) and INDIVIDUAL STOCKS
+- High-volume, liquid instruments only
+- Clear entry/exit levels with tight stop-losses
 
 Your task:
-- Identify 2-5 CFD trading opportunities
+- Identify 3-7 CFD trading opportunities
+- Mix of index CFDs and stock CFDs
 - Focus on technical setups + catalysts
 - Provide specific entry/exit/stop levels
 - Consider both long and short trades
+- Include position sizing (% of capital per trade)
 
 Output strict JSON:
 {
   "cfd_trades": [
     {
-      "ticker": "SPY",
+      "ticker": "SPY|QQQ|AAPL|TSLA|etc",
+      "instrument_type": "INDEX|STOCK",
       "direction": "LONG|SHORT",
       "timeframe": "INTRADAY|1-3_DAYS|SWING",
       "confidence": 0-100,
@@ -291,8 +296,10 @@ Output strict JSON:
       "target_level": 455.00,
       "stop_loss": 448.00,
       "risk_reward_ratio": 2.5,
+      "position_size_pct": 2-5,
       "reasoning": "Technical setup + catalyst",
-      "holding_period": "Target 1-2 days"
+      "holding_period": "Target 1-2 days",
+      "catalysts": ["News event", "Technical breakout", etc]
     }
   ]
 }"""
@@ -302,8 +309,12 @@ Output strict JSON:
 MARKET SENTIMENT: {market_analysis.get('sentiment', 'N/A')}
 VOLATILITY: {market_analysis.get('volatility_assessment', 'N/A')}
 
-TECHNICAL SIGNALS:
-{json.dumps(technical_analysis.get('ticker_analysis', [])[:5], indent=2)}
+TECHNICAL SIGNALS (Individual Stocks):
+{json.dumps(technical_analysis.get('ticker_analysis', [])[:8], indent=2)}
+
+NEW STOCK OPPORTUNITIES (Potential CFD Longs):
+{json.dumps([{'ticker': opp['ticker'], 'sector': opp['sector'], 'confidence': opp['confidence']}
+             for opp in stock_opportunities.get('buy_opportunities', [])[:5]], indent=2)}
 
 NEWS CATALYSTS:
 Opportunities: {json.dumps(news_analysis.get('opportunities', [])[:3], indent=2)}
@@ -313,14 +324,26 @@ RISK CONTEXT:
 Risk Level: {risk_assessment.get('risk_level', 'N/A')}
 Current Volatility: {market_analysis.get('volatility_assessment', 'N/A')}
 
-Generate 2-5 CFD trading opportunities focusing on:
-1. Clear technical setups
-2. News catalysts or momentum
-3. Both long and short opportunities
-4. Specific entry/exit/stop levels
-5. Reasonable risk/reward (minimum 1.5:1)
+Generate 3-7 CFD trading opportunities:
 
-Be selective - only high-conviction setups."""
+INDICES (1-2 trades):
+- SPY, QQQ, IWM based on market direction
+- SHORT if bearish, LONG if bullish breakout
+
+INDIVIDUAL STOCKS (2-5 trades):
+- High-volume liquid stocks only
+- Both LONG (momentum, breakouts) and SHORT (breakdown, weakness)
+- Consider stocks from new opportunities for LONG setups
+- Look for technical patterns: breakouts, support/resistance tests
+- News-driven catalysts
+
+Requirements:
+1. Clear technical setups (support/resistance, patterns, momentum)
+2. Minimum 1.5:1 risk/reward ratio
+3. Specific entry/exit/stop levels
+4. Position sizing: 2-5% per trade
+5. Holding period: typically 1-3 days
+6. High-conviction only - quality over quantity"""
 
         print(f"💱 Generating CFD trading opportunities...")
 
