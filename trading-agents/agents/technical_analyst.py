@@ -4,6 +4,7 @@ Analyzes price action, chart patterns, and technical indicators
 """
 import json
 from typing import Dict, Any, List
+from utils.json_parser import safe_json_parse
 
 
 class TechnicalAnalyst:
@@ -114,7 +115,17 @@ Note: Use reasonable technical assumptions for moving averages, RSI, MACD based 
                 json_mode=True
             )
 
-            analysis = json.loads(response)
+            # Parse JSON response with robust fallback strategies
+            fallback = {
+                'ticker_analysis': [],
+                'market_technical_condition': 'Analysis parsing failed',
+                'volatility_assessment': 'Parsing failed',
+                'sector_rotation': '',
+                'agent': 'TechnicalAnalyst',
+                'fallback': True
+            }
+
+            analysis = safe_json_parse(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'TechnicalAnalyst'

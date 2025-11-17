@@ -10,6 +10,7 @@ import json
 from typing import Dict, Any
 from config.llm_router_simple import LLMRouter
 from config.settings import API_CONFIG, AGENT_CONFIG
+from utils.json_parser import safe_json_parse
 
 # System prompt from AGENT_SPECIFICATIONS.md (truncated for brevity)
 MARKET_ANALYST_SYSTEM_PROMPT = """# MARKET ANALYST AGENT
@@ -122,8 +123,11 @@ Output JSON only (no additional text)."""
                 json_mode=True
             )
 
-            # Parse JSON response
-            result = json.loads(response)
+            # Parse JSON response with robust fallback strategies
+            result = safe_json_parse(
+                response,
+                default=self._generate_fallback_analysis(market_data)
+            )
 
             # Add metadata
             result['agent'] = 'MarketAnalyst'
@@ -135,11 +139,6 @@ Output JSON only (no additional text)."""
             print(f"   Volatility: {result.get('volatility_assessment', 'UNKNOWN')}")
 
             return result
-
-        except json.JSONDecodeError as e:
-            print(f"   ⚠️  Failed to parse JSON response: {e}")
-            print(f"   Raw response: {response[:200]}...")
-            return self._generate_fallback_analysis(market_data)
 
         except Exception as e:
             print(f"   ⚠️  Analysis failed: {e}")

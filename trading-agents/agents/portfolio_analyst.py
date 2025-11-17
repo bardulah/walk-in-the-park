@@ -10,6 +10,7 @@ import json
 from typing import Dict, Any
 from config.llm_router_simple import LLMRouter
 from config.settings import API_CONFIG, AGENT_CONFIG
+from utils.json_parser import safe_json_parse
 
 # System prompt from AGENT_SPECIFICATIONS.md
 PORTFOLIO_ANALYST_SYSTEM_PROMPT = """# PORTFOLIO ANALYST AGENT
@@ -29,6 +30,60 @@ You are a Portfolio Analyst for a daily stock market monitoring system. Your sol
 - You DO NOT predict market movements
 - You focus on portfolio construction and risk distribution
 - You provide objective, factual analysis only
+
+## Example Analysis
+
+**Input Portfolio:**
+```json
+{
+  "total_value": 100000,
+  "positions": [
+    {"ticker": "AAPL", "value": 35000, "sector": "Technology"},
+    {"ticker": "MSFT", "value": 25000, "sector": "Technology"},
+    {"ticker": "JNJ", "value": 15000, "sector": "Healthcare"},
+    {"ticker": "JPM", "value": 15000, "sector": "Finance"},
+    {"ticker": "NEE", "value": 10000, "sector": "Utilities"}
+  ]
+}
+```
+
+**Expected Output:**
+```json
+{
+  "portfolio_health_score": 65,
+  "total_positions": 5,
+  "top_holding_pct": 35.0,
+  "concentration_risk": "MEDIUM",
+  "sector_distribution": {
+    "Technology": 60.0,
+    "Healthcare": 15.0,
+    "Finance": 15.0,
+    "Utilities": 10.0
+  },
+  "sector_risk_assessment": "CONCENTRATED",
+  "rebalance_opportunities": [
+    {
+      "action": "REDUCE",
+      "ticker": "AAPL",
+      "reason": "Reduce concentration - largest holding at 35% exceeds ideal 20% limit",
+      "current_pct": 35.0,
+      "target_pct": 20.0
+    },
+    {
+      "action": "REDUCE",
+      "ticker": "MSFT",
+      "reason": "Technology sector overweight at 60% - reduce second-largest tech holding",
+      "current_pct": 25.0,
+      "target_pct": 15.0
+    }
+  ],
+  "key_findings": [
+    "Technology sector highly concentrated at 60% of portfolio",
+    "AAPL represents 35% of portfolio - significant single-stock risk",
+    "Healthcare, Finance, and Utilities are underweight - consider diversification"
+  ]
+}
+```
 
 ## Output Format
 You must respond with valid JSON only (no markdown, no explanations):
@@ -137,8 +192,11 @@ Output JSON only (no additional text)."""
                 json_mode=True
             )
 
-            # Parse JSON response
-            result = json.loads(response)
+            # Parse JSON response with robust fallback strategies
+            result = safe_json_parse(
+                response,
+                default=self._generate_fallback_analysis(portfolio_data)
+            )
 
             # Add metadata
             result['agent'] = 'PortfolioAnalyst'
@@ -150,12 +208,6 @@ Output JSON only (no additional text)."""
             print(f"   Concentration Risk: {result.get('concentration_risk', 'UNKNOWN')}")
 
             return result
-
-        except json.JSONDecodeError as e:
-            print(f"   ⚠️  Failed to parse JSON response: {e}")
-            print(f"   Raw response: {response[:200]}...")
-            # Return fallback
-            return self._generate_fallback_analysis(portfolio_data)
 
         except Exception as e:
             print(f"   ⚠️  Analysis failed: {e}")

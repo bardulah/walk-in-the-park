@@ -4,6 +4,7 @@ Enforces risk limits and has override authority on all recommendations
 """
 import json
 from typing import Dict, Any, List
+from utils.json_parser import safe_json_parse
 
 
 class RiskManager:
@@ -166,7 +167,22 @@ Be conservative. When in doubt, protect capital."""
                 json_mode=True
             )
 
-            analysis = json.loads(response)
+            # Parse JSON response with robust fallback strategies
+            # If parsing fails, REJECT ALL recommendations (safe default)
+            fallback = {
+                'risk_level': 'CRITICAL',
+                'portfolio_health': 50,
+                'current_violations': ['Risk Manager parsing failed - rejecting all actions'],
+                'approved_recommendations': [],
+                'rejected_recommendations': all_recommendations,
+                'forced_actions': [],
+                'risk_alert': 'CRITICAL: Risk Manager JSON parsing failed. All recommendations rejected as safety measure.',
+                'recommendations': 'Check Risk Manager output format.',
+                'agent': 'RiskManager',
+                'fallback': True
+            }
+
+            analysis = safe_json_parse(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'RiskManager'

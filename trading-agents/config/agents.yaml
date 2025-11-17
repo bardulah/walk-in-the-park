@@ -1,0 +1,94 @@
+# Agent Configuration
+# Easily modify agent behavior without changing code
+
+agents:
+  portfolio_analyst:
+    model: "gpt-4o-mini"  # Cost-effective for factual analysis
+    temperature: 0.3      # Low - we want consistent factual analysis
+    max_tokens: 1000
+    description: "Analyzes portfolio health and concentration risks"
+
+  market_analyst:
+    model: "gpt-4o-mini"
+    temperature: 0.5      # Moderate - balance between creativity and consistency
+    max_tokens: 1500
+    description: "Analyzes macro market conditions and sentiment"
+
+  news_monitor:
+    model: "gpt-4o-mini"
+    temperature: 0.3      # Low - factual news analysis
+    max_tokens: 2500
+    description: "Monitors and analyzes news for trading signals"
+
+  technical_analyst:
+    model: "gpt-4o-mini"
+    temperature: 0.4      # Low-moderate - technical analysis should be systematic
+    max_tokens: 2500
+    description: "Analyzes price action and technical indicators"
+
+  stock_screener:
+    model: "gpt-4o-mini"
+    temperature: 0.6      # Moderate - allow some creativity in finding opportunities
+    max_tokens: 2500
+    description: "Screens for new stock investment opportunities"
+
+  risk_manager:
+    model: "gpt-4o-mini"
+    temperature: 0.2      # Very low - risk enforcement must be consistent
+    max_tokens: 3000
+    description: "Enforces risk limits with override authority"
+
+  orchestrator:
+    model: "claude-3-5-sonnet"  # Best model for complex synthesis
+    temperature: 0.5
+    max_tokens: 2500
+    description: "Synthesizes all agent outputs into final recommendations"
+
+  cfd_generator:
+    model: "claude-3-5-sonnet"  # Good at understanding nuanced trading setups
+    temperature: 0.6      # Moderate - balance precision with opportunity identification
+    max_tokens: 2000
+    description: "Generates CFD trading opportunities"
+
+# Risk Management Parameters
+risk_config:
+  max_position_pct: 15.0          # Maximum single position size
+  max_sector_pct: 40.0             # Maximum sector concentration
+  portfolio_concentration_limit: 3  # Max positions in top 3 holdings
+  max_portfolio_risk_pct: 2.0      # Maximum portfolio-level risk per day
+
+  # CFD Trading Limits
+  max_cfd_position_pct: 5.0        # Maximum per CFD trade
+  max_total_cfd_exposure_pct: 20.0 # Maximum total CFD exposure
+  min_risk_reward_ratio: 1.5       # Minimum R:R for CFD trades
+
+# Model Cost Estimates (per 1M tokens)
+# Used for cost tracking and optimization
+model_costs:
+  gpt-4o-mini:
+    input: 0.15
+    output: 0.60
+  gpt-4o:
+    input: 2.50
+    output: 10.00
+  claude-3-5-sonnet:
+    input: 3.00
+    output: 15.00
+  gemini-1.5-flash:
+    input: 0.00  # Free tier
+    output: 0.00
+
+# Execution Settings
+execution:
+  parallel_agents: true            # Use async parallel execution
+  timeout_seconds: 30              # Timeout per agent
+  retry_on_failure: true           # Retry failed LLM calls
+  max_retries: 2                   # Maximum retry attempts
+
+# Output Settings
+output:
+  save_agent_outputs: true         # Save individual agent outputs for debugging
+  output_directory: "outputs"
+  format: "json"                   # json or yaml
+  include_timestamps: true
+  include_cost_tracking: true

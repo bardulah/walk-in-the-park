@@ -4,6 +4,7 @@ Identifies new stock opportunities based on market conditions and portfolio need
 """
 import json
 from typing import Dict, Any, List
+from utils.json_parser import safe_json_parse
 
 
 class StockScreener:
@@ -127,7 +128,17 @@ Generate actionable buy recommendations with clear rationale."""
                 json_mode=True
             )
 
-            analysis = json.loads(response)
+            # Parse JSON response with robust fallback strategies
+            fallback = {
+                'buy_opportunities': [],
+                'sector_allocation': {},
+                'diversification_needs': [],
+                'top_picks': [],
+                'agent': 'StockScreener',
+                'fallback': True
+            }
+
+            analysis = safe_json_parse(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'StockScreener'

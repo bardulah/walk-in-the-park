@@ -4,6 +4,7 @@ Analyzes market news and sentiment for portfolio positions
 """
 import json
 from typing import Dict, Any, List
+from utils.json_parser import safe_json_parse
 
 
 class NewsMonitor:
@@ -89,7 +90,17 @@ Provide comprehensive news analysis focusing on:
                 json_mode=True
             )
 
-            analysis = json.loads(response)
+            # Parse JSON response with robust fallback strategies
+            fallback = {
+                'ticker_analysis': [],
+                'market_themes': [],
+                'urgent_alerts': [f"News analysis parsing failed"],
+                'opportunities': [],
+                'agent': 'NewsMonitor',
+                'fallback': True
+            }
+
+            analysis = safe_json_parse(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'NewsMonitor'

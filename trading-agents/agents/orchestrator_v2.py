@@ -7,10 +7,13 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 import json
+import asyncio
 from typing import Dict, Any, List
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from config.llm_router_unified import UnifiedLLMRouter
 from config.settings import API_CONFIG, AGENT_CONFIG
+from utils.json_parser import safe_json_parse
 from agents.portfolio_analyst import PortfolioAnalyst
 from agents.market_analyst import MarketAnalyst
 from agents.news_monitor import NewsMonitor
@@ -171,6 +174,179 @@ class OrchestratorV2:
 
         return final_output
 
+    async def run_analysis_async(
+        self,
+        portfolio_data: Dict[str, Any],
+        market_data: Dict[str, Any],
+        news_data: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Run full 6-agent analysis pipeline with parallel execution for speed
+
+        Runs 5 foundational agents in parallel (Portfolio, Market, News, Technical, Stock Screener)
+        This is 3-5x faster than sequential execution.
+
+        Args:
+            portfolio_data: Current portfolio positions
+            market_data: Market indices and conditions
+            news_data: News articles per ticker (optional)
+
+        Returns:
+            Comprehensive recommendations including CFD trades
+        """
+        print("\n" + "="*60)
+        print("  MULTI-AGENT TRADING SYSTEM - DAILY ANALYSIS (ASYNC)")
+        print("="*60)
+
+        print("\n[STAGE 1] Running Foundational Analysis (5 agents in PARALLEL)...\n")
+
+        # Prepare news data if not provided
+        if news_data is None:
+            from data.mock_data import MockDataGenerator
+            mock_gen = MockDataGenerator()
+            news_data = {}
+            for pos in portfolio_data.get('positions', []):
+                news_data[pos['ticker']] = mock_gen.get_stock_news(pos['ticker'])
+
+        # Stage 1: Run 5 foundational agents in parallel using ThreadPoolExecutor
+        # This allows I/O-bound LLM API calls to run concurrently
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            # Submit all agents to run in parallel
+            portfolio_task = loop.run_in_executor(
+                executor,
+                self.portfolio_analyst.analyze,
+                portfolio_data
+            )
+            market_task = loop.run_in_executor(
+                executor,
+                self.market_analyst.analyze,
+                market_data
+            )
+            news_task = loop.run_in_executor(
+                executor,
+                self.news_monitor.analyze,
+                portfolio_data,
+                news_data
+            )
+            technical_task = loop.run_in_executor(
+                executor,
+                self.technical_analyst.analyze,
+                portfolio_data,
+                market_data
+            )
+            screener_task = loop.run_in_executor(
+                executor,
+                lambda: self.stock_screener.screen(portfolio_data, None, None)
+            )
+
+            # Wait for all agents to complete
+            portfolio_analysis, market_analysis, news_analysis, technical_analysis, stock_opportunities_initial = await asyncio.gather(
+                portfolio_task,
+                market_task,
+                news_task,
+                technical_task,
+                screener_task
+            )
+
+        # Re-run stock screener with complete market and news analysis
+        # (first run was with None to start in parallel)
+        stock_opportunities = self.stock_screener.screen(
+            portfolio_data,
+            market_analysis,
+            news_analysis
+        )
+
+        print("\n[STAGE 2] Generating preliminary recommendations...\n")
+
+        # Stage 2: Generate preliminary recommendations
+        preliminary_recs = self._generate_preliminary_recommendations(
+            portfolio_analysis,
+            market_analysis,
+            news_analysis,
+            technical_analysis,
+            stock_opportunities
+        )
+
+        print(f"   ✓ Generated {len(preliminary_recs)} preliminary recommendations\n")
+
+        print("[STAGE 3] Risk Manager review (with override authority)...\n")
+
+        # Stage 3: Risk Manager approval (FINAL AUTHORITY)
+        risk_assessment = self.risk_manager.analyze(
+            portfolio_data,
+            market_data,
+            preliminary_recs
+        )
+
+        print("[STAGE 4] Generating CFD trading opportunities...\n")
+
+        # Stage 4: Generate CFD recommendations for daily trading
+        cfd_recommendations = self._generate_cfd_recommendations(
+            market_analysis,
+            news_analysis,
+            technical_analysis,
+            risk_assessment,
+            stock_opportunities
+        )
+
+        print(f"   ✓ Generated {len(cfd_recommendations)} CFD opportunities\n")
+
+        # Combine final output
+        final_output = {
+            # Core recommendations (approved by Risk Manager)
+            'final_recommendations': risk_assessment.get('approved_recommendations', []),
+            'rejected_recommendations': risk_assessment.get('rejected_recommendations', []),
+            'forced_actions': risk_assessment.get('forced_actions', []),
+
+            # CFD trading opportunities
+            'cfd_opportunities': cfd_recommendations,
+
+            # Risk assessment
+            'risk_level': risk_assessment.get('risk_level', 'UNKNOWN'),
+            'portfolio_health': risk_assessment.get('portfolio_health', 50),
+            'current_violations': risk_assessment.get('current_violations', []),
+
+            # Context summaries
+            'market_context_summary': market_analysis.get('summary', ''),
+            'portfolio_health_summary': f"Portfolio health: {portfolio_analysis.get('health_score', 'N/A')}/100, Concentration risk: {portfolio_analysis.get('concentration_risk', 'N/A')}",
+            'news_summary': f"{len(news_analysis.get('urgent_alerts', []))} urgent alerts, {len(news_analysis.get('opportunities', []))} opportunities",
+            'technical_summary': technical_analysis.get('market_technical_condition', ''),
+
+            # Key insights
+            'key_insights': self._synthesize_insights(
+                portfolio_analysis,
+                market_analysis,
+                news_analysis,
+                technical_analysis
+            ),
+
+            # Alerts
+            'risk_alert': risk_assessment.get('risk_alert', None),
+
+            # Agent outputs (for transparency)
+            'agent_analyses': {
+                'portfolio': portfolio_analysis,
+                'market': market_analysis,
+                'news': news_analysis,
+                'technical': technical_analysis,
+                'risk': risk_assessment
+            },
+
+            # Metadata
+            'timestamp': datetime.now().isoformat(),
+            'agents_used': 6,
+            'system_version': '2.0-async',
+            'execution_mode': 'parallel'
+        }
+
+        print("✓ Analysis complete (parallel execution)!")
+        print(f"\nFinal Recommendations: {len(final_output['final_recommendations'])}")
+        print(f"CFD Opportunities: {len(final_output['cfd_opportunities'])}")
+        print(f"Risk Level: {final_output['risk_level']}\n")
+
+        return final_output
+
     def _generate_preliminary_recommendations(
         self,
         portfolio_analysis: Dict[str, Any],
@@ -253,7 +429,8 @@ Generate comprehensive recommendations:
             json_mode=True
         )
 
-        result = json.loads(response)
+        # Parse JSON response with robust fallback strategies
+        result = safe_json_parse(response, default={'recommendations': []})
         return result.get('recommendations', [])
 
     def _generate_cfd_recommendations(
@@ -282,6 +459,46 @@ Your task:
 - Provide specific entry/exit/stop levels
 - Consider both long and short trades
 - Include position sizing (% of capital per trade)
+
+## Example CFD Trades
+
+**Good CFD Trade (Index LONG):**
+```json
+{
+  "ticker": "SPY",
+  "instrument_type": "INDEX",
+  "direction": "LONG",
+  "timeframe": "1-3_DAYS",
+  "confidence": 75,
+  "entry_level": 450.50,
+  "target_level": 456.00,
+  "stop_loss": 448.00,
+  "risk_reward_ratio": 2.2,
+  "position_size_pct": 4,
+  "reasoning": "S&P breaking above 450 resistance with strong volume, bullish engulfing on daily",
+  "holding_period": "Target 2-3 days, exit at 456 or if broken support",
+  "catalysts": ["Technical breakout above resistance", "Strong market sentiment", "VIX declining"]
+}
+```
+
+**Good CFD Trade (Stock SHORT):**
+```json
+{
+  "ticker": "NVDA",
+  "instrument_type": "STOCK",
+  "direction": "SHORT",
+  "timeframe": "INTRADAY",
+  "confidence": 70,
+  "entry_level": 485.00,
+  "target_level": 475.00,
+  "stop_loss": 488.00,
+  "risk_reward_ratio": 3.3,
+  "position_size_pct": 3,
+  "reasoning": "Failed breakout at 490, forming bearish head & shoulders, high RSI",
+  "holding_period": "Intraday or 1-2 days, exit at 475 support",
+  "catalysts": ["Technical breakdown pattern", "Semiconductor sector weakness", "Profit-taking after rally"]
+}
+```
 
 Output strict JSON:
 {
@@ -356,7 +573,8 @@ Requirements:
             json_mode=True
         )
 
-        result = json.loads(response)
+        # Parse JSON response with robust fallback strategies
+        result = safe_json_parse(response, default={'cfd_trades': []})
         return result.get('cfd_trades', [])
 
     def _synthesize_insights(
