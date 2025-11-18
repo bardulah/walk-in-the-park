@@ -3,9 +3,11 @@ Base Agent Class
 Provides common functionality for all trading agents
 """
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from utils.json_parser import safe_json_parse
+from config.logging_config import get_logger
 
 
 class BaseAgent(ABC):
@@ -43,6 +45,9 @@ class BaseAgent(ABC):
         self.max_tokens = max_tokens
         self.agent_name = agent_name or self.__class__.__name__
 
+        # Setup logger for this agent
+        self.logger = get_logger(f"agents.{self.agent_name.replace(' ', '_').lower()}")
+
     def _call_llm(
         self,
         system_prompt: str,
@@ -67,17 +72,28 @@ class BaseAgent(ABC):
         Raises:
             RuntimeError: If LLM call fails
         """
+        temp = temperature or self.temperature
+        tokens = max_tokens or self.max_tokens
+
+        self.logger.debug(
+            f"Calling LLM | Model: {self.model} | Temp: {temp} | Max tokens: {tokens}"
+        )
+
         try:
             response = self.llm_router.call(
                 model=self.model,
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                temperature=temperature or self.temperature,
-                max_tokens=max_tokens or self.max_tokens,
+                temperature=temp,
+                max_tokens=tokens,
                 json_mode=json_mode
             )
+
+            self.logger.debug(f"LLM response received | Length: {len(response)} chars")
             return response
+
         except Exception as e:
+            self.logger.error(f"LLM call failed: {str(e)}", exc_info=True)
             raise RuntimeError(f"{self.agent_name} LLM call failed: {e}")
 
     def _parse_json_response(
@@ -100,20 +116,40 @@ class BaseAgent(ABC):
         """
         return safe_json_parse(response, default=default)
 
-    def _log_progress(self, message: str, emoji: str = "🔧"):
+    def _log_progress(self, message: str, emoji: str = "🔧", level: int = logging.INFO):
         """
         Log progress message
 
         Args:
             message: Progress message
             emoji: Emoji icon (optional)
+            level: Logging level (default: INFO)
         """
+        # Log to structured logger
+        self.logger.log(level, f"{emoji} {message} | Model: {self.model}")
+
+        # Also print for backward compatibility
         print(f"\n{emoji} {self.agent_name}: {message}")
         print(f"   Model: {self.model}")
 
     def _log_info(self, message: str):
-        """Log info message without model details"""
+        """Log info message"""
+        self.logger.info(message)
         print(f"   {message}")
+
+    def _log_debug(self, message: str):
+        """Log debug message"""
+        self.logger.debug(message)
+
+    def _log_warning(self, message: str):
+        """Log warning message"""
+        self.logger.warning(message)
+        print(f"   ⚠️  {message}")
+
+    def _log_error(self, message: str, exc_info: bool = False):
+        """Log error message"""
+        self.logger.error(message, exc_info=exc_info)
+        print(f"   ❌ {message}")
 
     @abstractmethod
     def analyze(self, *args, **kwargs) -> Dict[str, Any]:

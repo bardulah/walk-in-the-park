@@ -4,8 +4,10 @@ Optimized for cost efficiency using Google credits
 """
 import json
 import requests
+import logging
 from typing import Dict, Any, Optional
 from openai import OpenAI
+from config.logging_config import get_logger
 
 
 class UnifiedLLMRouter:
@@ -33,6 +35,10 @@ class UnifiedLLMRouter:
         )
 
         self.total_cost = 0.0
+        self.call_count = 0
+
+        # Setup logger
+        self.logger = get_logger("llm_router.unified")
 
         # Model routing map
         self.gemini_models = {
@@ -82,6 +88,9 @@ class UnifiedLLMRouter:
         Returns:
             Model response as string (JSON if json_mode=True)
         """
+        self.call_count += 1
+        self.logger.debug(f"Call #{self.call_count} | Model: {model} | Temp: {temperature}")
+
         # Route to appropriate provider
         # For now, route all through OpenRouter (Gemini direct API has auth issues)
         if model in self.openrouter_models:
@@ -89,6 +98,7 @@ class UnifiedLLMRouter:
                 model, system_prompt, user_prompt, temperature, max_tokens, json_mode
             )
         else:
+            self.logger.error(f"Unknown model requested: {model}")
             raise ValueError(f"Unknown model: {model}")
 
     def _call_gemini(
@@ -154,6 +164,11 @@ class UnifiedLLMRouter:
                             cost = (prompt_tokens / 1000 * input_cost) + \
                                    (completion_tokens / 1000 * output_cost)
                             self.total_cost += cost
+
+                            self.logger.debug(
+                                f"Gemini cost tracked (actual) | Tokens: {prompt_tokens}+{completion_tokens} | "
+                                f"Cost: ${cost:.4f} | Total: ${self.total_cost:.4f}"
+                            )
                     else:
                         # Fallback to character-based estimation if no usage metadata
                         input_chars = len(system_prompt) + len(user_prompt)
@@ -166,6 +181,12 @@ class UnifiedLLMRouter:
                             cost = (prompt_tokens / 1000 * input_cost) + \
                                    (completion_tokens / 1000 * output_cost)
                             self.total_cost += cost
+
+                            self.logger.debug(
+                                f"Gemini cost tracked (estimated) | Chars: {input_chars}+{output_chars} | "
+                                f"Est. tokens: {prompt_tokens}+{completion_tokens} | "
+                                f"Cost: ${cost:.4f} | Total: ${self.total_cost:.4f}"
+                            )
 
                     return response_text
 
@@ -208,6 +229,11 @@ class UnifiedLLMRouter:
             cost = (usage.prompt_tokens / 1000 * input_cost) + \
                    (usage.completion_tokens / 1000 * output_cost)
             self.total_cost += cost
+
+            self.logger.debug(
+                f"Cost tracked | Tokens: {usage.prompt_tokens}+{usage.completion_tokens} | "
+                f"Cost: ${cost:.4f} | Total: ${self.total_cost:.4f}"
+            )
 
         return response.choices[0].message.content
 
