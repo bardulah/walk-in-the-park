@@ -141,7 +141,33 @@ class UnifiedLLMRouter:
             if "content" in candidate and "parts" in candidate["content"]:
                 parts = candidate["content"]["parts"]
                 if len(parts) > 0 and "text" in parts[0]:
-                    return parts[0]["text"]
+                    response_text = parts[0]["text"]
+
+                    # Track cost using actual token counts from usageMetadata
+                    if "usageMetadata" in data:
+                        usage = data["usageMetadata"]
+                        prompt_tokens = usage.get("promptTokenCount", 0)
+                        completion_tokens = usage.get("candidatesTokenCount", 0)
+
+                        if model in self.costs:
+                            input_cost, output_cost = self.costs[model]
+                            cost = (prompt_tokens / 1000 * input_cost) + \
+                                   (completion_tokens / 1000 * output_cost)
+                            self.total_cost += cost
+                    else:
+                        # Fallback to character-based estimation if no usage metadata
+                        input_chars = len(system_prompt) + len(user_prompt)
+                        output_chars = len(response_text)
+                        prompt_tokens = input_chars // 4
+                        completion_tokens = output_chars // 4
+
+                        if model in self.costs:
+                            input_cost, output_cost = self.costs[model]
+                            cost = (prompt_tokens / 1000 * input_cost) + \
+                                   (completion_tokens / 1000 * output_cost)
+                            self.total_cost += cost
+
+                    return response_text
 
         # If we get here, response format is unexpected
         raise ValueError(f"Unexpected Gemini response format. Got: {json.dumps(data, indent=2)[:500]}")
