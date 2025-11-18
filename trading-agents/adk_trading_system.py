@@ -1,5 +1,5 @@
 """
-Google ADK Trading System - Proper Implementation
+Google ADK Trading System - Proper Implementation with Async Support
 Based on official ADK documentation and patterns
 
 Installation:
@@ -11,6 +11,7 @@ Architecture:
 - Coordinator LlmAgent synthesizes final recommendations
 - InMemorySessionService for session management
 - Runner for execution
+- Full async/await support
 
 References:
 - https://google.github.io/adk-docs/
@@ -20,6 +21,7 @@ References:
 import os
 import sys
 import json
+import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -44,13 +46,14 @@ except ImportError as e:
 
 class ADKTradingSystem:
     """
-    Proper Google ADK Trading System
+    Proper Google ADK Trading System with async support
 
     Uses ADK's official patterns:
     - ParallelAgent for concurrent execution
     - LlmAgent with output_key for state management
     - Runner with InMemorySessionService
     - Proper agent hierarchy
+    - Full async/await handling
     """
 
     def __init__(self, api_key: str, app_name: str = "trading_system"):
@@ -145,7 +148,7 @@ You are a Portfolio Analyst for a daily stock market monitoring system.
 ```
 
 ## Your Task
-Analyze the portfolio data from session state and provide:
+Analyze the portfolio data from session state (key: portfolio_data) and provide:
 1. Portfolio health score (0-100)
 2. Concentration risk assessment
 3. High-risk positions requiring attention
@@ -195,7 +198,7 @@ You are a Market Analyst specializing in macro market conditions.
 ```
 
 ## Your Task
-Analyze market data and provide:
+Analyze market data from session state (key: market_data) and provide:
 1. Market sentiment (BULLISH/BEARISH/NEUTRAL)
 2. Confidence level (0-100)
 3. Volatility assessment
@@ -222,7 +225,7 @@ Output strict JSON format.
 You monitor news sentiment for portfolio positions.
 
 ## Your Task
-Analyze news data and provide:
+Analyze news data from session state (key: news_data) and provide:
 1. Per-ticker sentiment analysis (POSITIVE/NEGATIVE/NEUTRAL)
 2. Urgent alerts requiring immediate action
 3. Positive opportunities to watch
@@ -271,11 +274,11 @@ running in parallel and synthesize their findings into actionable trading recomm
 
 ## Your Task
 1. First, delegate to the ParallelAnalysts agent to run all three analysts concurrently
-2. Read their results from session state:
-   - {portfolio_analysis}
-   - {market_analysis}
-   - {news_analysis}
-3. Synthesize findings into trading recommendations
+2. After the parallel analysis completes, read their results from session state keys:
+   - portfolio_analysis (from Portfolio Analyst)
+   - market_analysis (from Market Analyst)
+   - news_analysis (from News Monitor)
+3. Synthesize their findings into comprehensive trading recommendations
 
 ## Output Format
 
@@ -343,7 +346,7 @@ Generate comprehensive trading recommendations in strict JSON:
             output_key="final_recommendations"
         )
 
-    def run_analysis(
+    async def run_analysis_async(
         self,
         portfolio_data: Dict[str, Any],
         market_data: Dict[str, Any],
@@ -351,7 +354,7 @@ Generate comprehensive trading recommendations in strict JSON:
         user_id: str = "default_user"
     ) -> Dict[str, Any]:
         """
-        Run trading analysis using ADK's Runner pattern
+        Run trading analysis using ADK's Runner pattern (async)
 
         Args:
             portfolio_data: Current portfolio positions
@@ -382,8 +385,8 @@ Generate comprehensive trading recommendations in strict JSON:
             "timestamp": datetime.now().isoformat()
         }
 
-        # Create session
-        session = self.session_service.create_session(
+        # Create session (ASYNC)
+        session = await self.session_service.create_session(
             app_name=self.app_name,
             user_id=user_id,
             state=initial_state
@@ -412,9 +415,9 @@ Provide actionable recommendations with specific entry/exit levels.""")]
 
         print("[STAGE 1] Running parallel analysis (Portfolio + Market + News)...\n")
 
-        # Run agent via Runner
+        # Run agent via Runner (async)
         events = []
-        for event in self.runner.run(
+        async for event in self.runner.run_async(
             user_id=user_id,
             session_id=session.id,
             new_message=user_message
@@ -422,14 +425,16 @@ Provide actionable recommendations with specific entry/exit levels.""")]
             events.append(event)
             # Print agent progress
             if hasattr(event, 'message') and event.message:
-                content = event.message.parts[0].text if event.message.parts else ""
-                if content and len(content) < 200:
-                    print(f"  {content}")
+                parts = event.message.parts if hasattr(event.message, 'parts') else []
+                if parts:
+                    content = parts[0].text if hasattr(parts[0], 'text') else str(parts[0])
+                    if content and len(content) < 200:
+                        print(f"  {content}")
 
         print("\n[STAGE 2] Coordinator synthesizing recommendations...\n")
 
-        # Get final result from session state
-        updated_session = self.session_service.get_session(
+        # Get final result from session state (ASYNC)
+        updated_session = await self.session_service.get_session(
             app_name=self.app_name,
             user_id=user_id,
             session_id=session.id
@@ -450,7 +455,7 @@ Provide actionable recommendations with specific entry/exit levels.""")]
                 }
             )
         else:
-            result = final_recs
+            result = final_recs if isinstance(final_recs, dict) else {}
 
         # Add metadata
         result['timestamp'] = datetime.now().isoformat()
@@ -468,6 +473,29 @@ Provide actionable recommendations with specific entry/exit levels.""")]
         print("✓ Analysis complete!\n")
 
         return result
+
+    def run_analysis(
+        self,
+        portfolio_data: Dict[str, Any],
+        market_data: Dict[str, Any],
+        news_data: Optional[Dict[str, Any]] = None,
+        user_id: str = "default_user"
+    ) -> Dict[str, Any]:
+        """
+        Synchronous wrapper for run_analysis_async
+
+        Args:
+            portfolio_data: Current portfolio positions
+            market_data: Market indices and conditions
+            news_data: News per ticker (optional)
+            user_id: User identifier for session management
+
+        Returns:
+            Trading recommendations
+        """
+        return asyncio.run(
+            self.run_analysis_async(portfolio_data, market_data, news_data, user_id)
+        )
 
 
 # Test function
@@ -508,7 +536,8 @@ if __name__ == "__main__":
         for i, rec in enumerate(results.get('stock_recommendations', [])[:5], 1):
             print(f"\n{i}. {rec.get('ticker', 'N/A')} - {rec.get('action', 'N/A')} ({rec.get('priority', 'N/A')})")
             print(f"   Confidence: {rec.get('confidence', 0)}%")
-            print(f"   {rec.get('reasoning', 'N/A')[:100]}...")
+            reasoning = rec.get('reasoning', 'N/A')
+            print(f"   {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}")
 
         print(f"\n💱 CFD OPPORTUNITIES ({len(results.get('cfd_opportunities', []))}):")
         for i, cfd in enumerate(results.get('cfd_opportunities', [])[:5], 1):
