@@ -20,12 +20,15 @@ from typing import Dict, Any, List
 import tempfile
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from trading-agents.utils.model_cascade import ModelCascade
-from trading-agents.utils.async_consensus import AsyncConsensusValidator
-from trading-agents.utils.metrics import MetricsCollector
-from config.logging_config import get_logger
+from utils.model_cascade import ModelCascade
+from utils.async_consensus import AsyncConsensusValidator
+from utils.metrics import MetricsCollector
+
+# Add config directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'config'))
+from logging_config import get_logger
 
 
 logger = get_logger("benchmark")

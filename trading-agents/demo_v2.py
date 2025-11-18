@@ -19,16 +19,19 @@ import sys
 from pathlib import Path
 
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from trading-agents.agents.orchestrator_v4 import ProductionOrchestrator
-from trading-agents.utils.model_cascade import ModelCascade
-from trading-agents.utils.vector_rag import VectorFinancialRAG
-from trading-agents.utils.trading_safety import TradingSafetySystem
-from trading-agents.utils.async_consensus import AsyncConsensusValidator
-from trading-agents.utils.metrics import MetricsCollector
-from trading-agents.utils.data_providers import get_data_provider
-from config.logging_config import get_logger
+from agents.orchestrator_v4 import ProductionOrchestrator
+from utils.model_cascade import ModelCascade
+from utils.vector_rag import VectorFinancialRAG
+from utils.trading_safety import TradingSafetySystem
+from utils.async_consensus import AsyncConsensusValidator
+from utils.metrics import MetricsCollector
+from utils.data_providers import get_data_provider
+
+# Add config directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'config'))
+from logging_config import get_logger
 
 
 logger = get_logger("demo_v2")
