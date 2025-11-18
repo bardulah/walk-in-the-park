@@ -97,8 +97,11 @@ class LLMRouter:
 
             # Extract cost (approximate)
             # Gemini Flash: $0.30/M input, $2.50/M output
-            input_tokens = len(system_prompt.split()) + len(user_prompt.split())  # Rough estimate
-            output_tokens = len(response.text.split())  # Rough estimate
+            # Use character-based estimation: 1 token ≈ 4 characters for English text
+            input_chars = len(system_prompt) + len(user_prompt)
+            output_chars = len(response.text)
+            input_tokens = input_chars // 4
+            output_tokens = output_chars // 4
             cost = (input_tokens / 1_000_000 * 0.30) + (output_tokens / 1_000_000 * 2.50)
             self.total_cost += cost
 
