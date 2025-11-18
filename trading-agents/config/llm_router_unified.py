@@ -8,6 +8,7 @@ import logging
 from typing import Dict, Any, Optional
 from openai import OpenAI
 from config.logging_config import get_logger
+from utils.rate_limiter import LLMRateLimiter, OPENROUTER_RATE_LIMITS, GEMINI_RATE_LIMITS
 
 
 class UnifiedLLMRouter:
@@ -17,13 +18,14 @@ class UnifiedLLMRouter:
     - OpenRouter for other models (gpt-4o-mini, claude-3.5-sonnet)
     """
 
-    def __init__(self, gemini_api_key: str, openrouter_api_key: str):
+    def __init__(self, gemini_api_key: str, openrouter_api_key: str, enable_rate_limiting: bool = True):
         """
         Initialize unified router
 
         Args:
             gemini_api_key: Google Gemini API key
             openrouter_api_key: OpenRouter API key
+            enable_rate_limiting: Enable rate limiting to prevent API throttling
         """
         self.gemini_api_key = gemini_api_key
         self.gemini_base_url = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -39,6 +41,17 @@ class UnifiedLLMRouter:
 
         # Setup logger
         self.logger = get_logger("llm_router.unified")
+
+        # Setup rate limiters
+        self.enable_rate_limiting = enable_rate_limiting
+        if enable_rate_limiting:
+            self.openrouter_limiter = LLMRateLimiter(OPENROUTER_RATE_LIMITS)
+            self.gemini_limiter = LLMRateLimiter(GEMINI_RATE_LIMITS)
+            self.logger.info("Rate limiting enabled")
+        else:
+            self.openrouter_limiter = None
+            self.gemini_limiter = None
+            self.logger.warning("Rate limiting disabled - use with caution")
 
         # Model routing map
         self.gemini_models = {
@@ -111,6 +124,12 @@ class UnifiedLLMRouter:
         json_mode: bool
     ) -> str:
         """Call Gemini REST API"""
+        # Rate limiting
+        if self.enable_rate_limiting and self.gemini_limiter:
+            if not self.gemini_limiter.acquire(tokens=max_tokens, blocking=True, timeout=30):
+                raise RuntimeError("Rate limit exceeded for Gemini API - request timed out")
+            self.logger.debug(f"Rate limit check passed | Status: {self.gemini_limiter.get_status()}")
+
         gemini_model_name = self.gemini_models[model]
 
         url = f"{self.gemini_base_url}/{gemini_model_name}:generateContent"
@@ -203,6 +222,12 @@ class UnifiedLLMRouter:
         json_mode: bool
     ) -> str:
         """Call OpenRouter API"""
+        # Rate limiting
+        if self.enable_rate_limiting and self.openrouter_limiter:
+            if not self.openrouter_limiter.acquire(tokens=max_tokens, blocking=True, timeout=30):
+                raise RuntimeError("Rate limit exceeded for OpenRouter API - request timed out")
+            self.logger.debug(f"Rate limit check passed | Status: {self.openrouter_limiter.get_status()}")
+
         openrouter_model = self.openrouter_models[model]
 
         messages = [
@@ -244,3 +269,15 @@ class UnifiedLLMRouter:
     def reset_cost(self):
         """Reset cost counter"""
         self.total_cost = 0.0
+
+    def get_rate_limit_status(self) -> Dict[str, Any]:
+        """Get current rate limit status for all providers"""
+        status = {"rate_limiting_enabled": self.enable_rate_limiting}
+
+        if self.enable_rate_limiting:
+            if self.openrouter_limiter:
+                status["openrouter"] = self.openrouter_limiter.get_status()
+            if self.gemini_limiter:
+                status["gemini"] = self.gemini_limiter.get_status()
+
+        return status

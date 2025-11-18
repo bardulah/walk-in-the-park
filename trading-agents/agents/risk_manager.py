@@ -5,51 +5,10 @@ Enforces risk limits and has override authority on all recommendations
 import json
 from typing import Dict, Any, List
 from utils.json_parser import safe_json_parse
+from agents.base_agent import BaseAgent
 
-
-class RiskManager:
-    """Manages portfolio risk and has final override authority"""
-
-    def __init__(self, llm_router, risk_config: Dict[str, Any] = None):
-        """
-        Initialize Risk Manager
-
-        Args:
-            llm_router: LLM router for model calls
-            risk_config: Risk parameters (position limits, loss limits, etc.)
-        """
-        self.llm_router = llm_router
-        self.model = "claude-3-5-sonnet"  # Use best model for critical risk decisions
-
-        # Default risk configuration
-        self.risk_config = risk_config or {
-            'max_position_size_pct': 25.0,  # Max 25% in single position
-            'max_sector_concentration_pct': 50.0,  # Max 50% in single sector
-            'max_portfolio_loss_pct': 15.0,  # Stop if down 15% from peak
-            'max_single_position_loss_pct': 10.0,  # Stop single position at -10%
-            'min_cash_reserve_pct': 5.0,  # Maintain 5% cash
-            'max_daily_trades': 10,  # Max 10 trades per day
-            'vix_threshold': 30.0,  # Reduce risk if VIX > 30
-        }
-
-    def analyze(
-        self,
-        portfolio_data: Dict[str, Any],
-        market_data: Dict[str, Any],
-        all_recommendations: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Evaluate portfolio risk and override recommendations if needed
-
-        Args:
-            portfolio_data: Current portfolio positions
-            market_data: Market conditions
-            all_recommendations: Recommendations from all agents
-
-        Returns:
-            Risk assessment with approved/rejected recommendations
-        """
-        system_prompt = """You are a Risk Manager with FINAL AUTHORITY over all trading decisions.
+# System prompt for Risk Manager
+RISK_MANAGER_SYSTEM_PROMPT = """You are a Risk Manager with FINAL AUTHORITY over all trading decisions.
 
 Your PRIMARY responsibility is to PROTECT capital and enforce risk limits.
 
@@ -99,15 +58,69 @@ Output strict JSON format:
   ],
   "forced_actions": [
     {
-      "ticker": "XYZ",
-      "action": "SELL",
-      "reasoning": "Exceeded max position loss limit (-10%)",
-      "mandatory": true
+      "ticker": "NVDA",
+      "action": "REDUCE",
+      "reason": "Position exceeds 25% limit",
+      "target_size_pct": 20.0
     }
   ],
-  "risk_alert": "Overall risk assessment and urgent actions needed",
-  "recommendations": "Risk management guidance"
+  "risk_warnings": ["List of risk warnings"],
+  "reasoning": "Overall risk assessment and key decisions"
 }"""
+
+
+class RiskManager(BaseAgent):
+    """Manages portfolio risk and has final override authority"""
+
+    def __init__(self, llm_router, risk_config: Dict[str, Any] = None):
+        """
+        Initialize Risk Manager
+
+        Args:
+            llm_router: LLM router for model calls
+            risk_config: Risk parameters (position limits, loss limits, etc.)
+        """
+        super().__init__(
+            llm_router=llm_router,
+            model="claude-3-5-sonnet",  # Use best model for critical risk decisions
+            temperature=0.2,  # Very low for consistent risk enforcement
+            max_tokens=3000,
+            agent_name="Risk Manager"
+        )
+
+        # Default risk configuration
+        self.risk_config = risk_config or {
+            'max_position_size_pct': 25.0,  # Max 25% in single position
+            'max_sector_concentration_pct': 50.0,  # Max 50% in single sector
+            'max_portfolio_loss_pct': 15.0,  # Stop if down 15% from peak
+            'max_single_position_loss_pct': 10.0,  # Stop single position at -10%
+            'min_cash_reserve_pct': 5.0,  # Maintain 5% cash
+            'max_daily_trades': 10,  # Max 10 trades per day
+            'vix_threshold': 30.0,  # Reduce risk if VIX > 30
+        }
+
+    def get_system_prompt(self) -> str:
+        """Get system prompt for Risk Manager"""
+        return RISK_MANAGER_SYSTEM_PROMPT
+
+    def analyze(
+        self,
+        portfolio_data: Dict[str, Any],
+        market_data: Dict[str, Any],
+        all_recommendations: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Evaluate portfolio risk and override recommendations if needed
+
+        Args:
+            portfolio_data: Current portfolio positions
+            market_data: Market conditions
+            all_recommendations: Recommendations from all agents
+
+        Returns:
+            Risk assessment with approved/rejected recommendations
+        """
+        self._log_progress("evaluating portfolio risk...", emoji="⚠️")
 
         # Calculate current risk metrics
         total_value = portfolio_data.get('total_value', 0)
@@ -155,19 +168,15 @@ Your Task:
 
 Be conservative. When in doubt, protect capital."""
 
-        print(f"🛡️  Risk Manager evaluating {len(all_recommendations)} recommendations...")
-
         try:
-            response = self.llm_router.call(
-                model=self.model,
-                system_prompt=system_prompt,
+            # Call LLM using base class method
+            response = self._call_llm(
+                system_prompt=self.get_system_prompt(),
                 user_prompt=user_prompt,
-                temperature=0.2,  # Very low - we want consistent risk enforcement
-                max_tokens=3000,
                 json_mode=True
             )
 
-            # Parse JSON response with robust fallback strategies
+            # Parse JSON response using base class method
             # If parsing fails, REJECT ALL recommendations (safe default)
             fallback = {
                 'risk_level': 'CRITICAL',
@@ -182,26 +191,26 @@ Be conservative. When in doubt, protect capital."""
                 'fallback': True
             }
 
-            analysis = safe_json_parse(response, default=fallback)
+            analysis = self._parse_json_response(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'RiskManager'
             analysis['model_used'] = self.model
             analysis['risk_config'] = self.risk_config
 
-            print(f"   ✓ Risk assessment complete")
-            print(f"   Risk Level: {analysis.get('risk_level', 'UNKNOWN')}")
-            print(f"   Approved: {len(analysis.get('approved_recommendations', []))}")
-            print(f"   Rejected: {len(analysis.get('rejected_recommendations', []))}")
-            print(f"   Forced Actions: {len(analysis.get('forced_actions', []))}")
+            self._log_info(f"✓ Risk assessment complete")
+            self._log_info(f"Risk Level: {analysis.get('risk_level', 'UNKNOWN')}")
+            self._log_info(f"Approved: {len(analysis.get('approved_recommendations', []))}")
+            self._log_info(f"Rejected: {len(analysis.get('rejected_recommendations', []))}")
+            self._log_info(f"Forced Actions: {len(analysis.get('forced_actions', []))}")
 
             if analysis.get('current_violations'):
-                print(f"   ⚠️  VIOLATIONS: {len(analysis['current_violations'])}")
+                self._log_warning(f"VIOLATIONS: {len(analysis['current_violations'])}")
 
             return analysis
 
         except Exception as e:
-            print(f"   ❌ Risk analysis failed: {e}")
+            self._log_error(f"Risk analysis failed: {e}")
             # If risk manager fails, REJECT ALL recommendations (safe default)
             return {
                 'risk_level': 'CRITICAL',
