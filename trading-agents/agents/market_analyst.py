@@ -11,6 +11,7 @@ from typing import Dict, Any
 from config.llm_router_simple import LLMRouter
 from config.settings import API_CONFIG, AGENT_CONFIG
 from utils.json_parser import safe_json_parse
+from agents.base_agent import BaseAgent
 
 # System prompt from AGENT_SPECIFICATIONS.md (truncated for brevity)
 MARKET_ANALYST_SYSTEM_PROMPT = """# MARKET ANALYST AGENT
@@ -72,7 +73,7 @@ You must respond with valid JSON only:
 - 30-49: Low conviction"""
 
 
-class MarketAnalyst:
+class MarketAnalyst(BaseAgent):
     """Market Analyst Agent"""
 
     def __init__(self, llm_router: LLMRouter):
@@ -82,8 +83,17 @@ class MarketAnalyst:
         Args:
             llm_router: LLM router for making AI calls
         """
-        self.llm_router = llm_router
-        self.model = AGENT_CONFIG.market_model  # Could be gemini-flash, but using gpt-4o-mini for MVP
+        super().__init__(
+            llm_router=llm_router,
+            model=AGENT_CONFIG.market_model,
+            temperature=0.5,  # Moderate temperature for analysis
+            max_tokens=1500,
+            agent_name="Market Analyst"
+        )
+
+    def get_system_prompt(self) -> str:
+        """Get system prompt for Market Analyst"""
+        return MARKET_ANALYST_SYSTEM_PROMPT
 
     def analyze(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -95,8 +105,7 @@ class MarketAnalyst:
         Returns:
             Dict with market analysis
         """
-        print(f"\n📊 Market Analyst analyzing market conditions...")
-        print(f"   Model: {self.model}")
+        self._log_progress("analyzing market conditions...", emoji="📊")
 
         # Generate user prompt
         user_prompt = f"""Analyze current market conditions:
@@ -113,18 +122,15 @@ Provide:
 Output JSON only (no additional text)."""
 
         try:
-            # Call LLM
-            response = self.llm_router.call(
-                model=self.model,
-                system_prompt=MARKET_ANALYST_SYSTEM_PROMPT,
+            # Call LLM using base class method
+            response = self._call_llm(
+                system_prompt=self.get_system_prompt(),
                 user_prompt=user_prompt,
-                temperature=0.5,  # Moderate temperature for analysis
-                max_tokens=1500,
                 json_mode=True
             )
 
-            # Parse JSON response with robust fallback strategies
-            result = safe_json_parse(
+            # Parse JSON response using base class method
+            result = self._parse_json_response(
                 response,
                 default=self._generate_fallback_analysis(market_data)
             )
@@ -134,14 +140,14 @@ Output JSON only (no additional text)."""
             result['model_used'] = self.model
             result['timestamp'] = market_data.get('timestamp')
 
-            print(f"   ✓ Analysis complete")
-            print(f"   Sentiment: {result.get('market_sentiment', 'UNKNOWN')} ({result.get('confidence', 0)}% confidence)")
-            print(f"   Volatility: {result.get('volatility_assessment', 'UNKNOWN')}")
+            self._log_info(f"✓ Analysis complete")
+            self._log_info(f"Sentiment: {result.get('market_sentiment', 'UNKNOWN')} ({result.get('confidence', 0)}% confidence)")
+            self._log_info(f"Volatility: {result.get('volatility_assessment', 'UNKNOWN')}")
 
             return result
 
         except Exception as e:
-            print(f"   ⚠️  Analysis failed: {e}")
+            self._log_error(f"Analysis failed: {e}")
             return self._generate_fallback_analysis(market_data)
 
     def _generate_fallback_analysis(self, market_data: Dict[str, Any]) -> Dict[str, Any]:

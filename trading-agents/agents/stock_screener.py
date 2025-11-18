@@ -5,39 +5,10 @@ Identifies new stock opportunities based on market conditions and portfolio need
 import json
 from typing import Dict, Any, List
 from utils.json_parser import safe_json_parse
+from agents.base_agent import BaseAgent
 
-
-class StockScreener:
-    """Screens for new stock opportunities"""
-
-    def __init__(self, llm_router):
-        """
-        Initialize Stock Screener
-
-        Args:
-            llm_router: LLM router for model calls
-        """
-        self.llm_router = llm_router
-        self.model = "gpt-4o-mini"  # Fast model for screening
-
-    def screen(
-        self,
-        portfolio_data: Dict[str, Any],
-        market_analysis: Dict[str, Any],
-        news_analysis: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Screen for new stock opportunities
-
-        Args:
-            portfolio_data: Current portfolio positions
-            market_analysis: Market sentiment and sector trends
-            news_analysis: News themes and opportunities
-
-        Returns:
-            New stock recommendations
-        """
-        system_prompt = """You are a Stock Screener specializing in identifying investment opportunities.
+# System prompt for Stock Screener
+STOCK_SCREENER_SYSTEM_PROMPT = """You are a Stock Screener specializing in identifying investment opportunities.
 
 Your role:
 1. Identify stocks that complement current portfolio
@@ -71,6 +42,55 @@ Output strict JSON format:
   "diversification_needs": ["Need defensive stocks", "Reduce tech concentration"],
   "top_picks": ["Top 3 tickers with highest conviction"]
 }"""
+
+
+class StockScreener(BaseAgent):
+    """Screens for new stock opportunities"""
+
+    def __init__(self, llm_router):
+        """
+        Initialize Stock Screener
+
+        Args:
+            llm_router: LLM router for model calls
+        """
+        super().__init__(
+            llm_router=llm_router,
+            model="gpt-4o-mini",  # Fast model for screening
+            temperature=0.6,
+            max_tokens=2500,
+            agent_name="Stock Screener"
+        )
+
+    def get_system_prompt(self) -> str:
+        """Get system prompt for Stock Screener"""
+        return STOCK_SCREENER_SYSTEM_PROMPT
+
+    def analyze(self, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Main analysis method (delegates to screen method)
+
+        This method is required by BaseAgent but delegates to screen()
+        """
+        return self.screen(*args, **kwargs)
+
+    def screen(
+        self,
+        portfolio_data: Dict[str, Any],
+        market_analysis: Dict[str, Any],
+        news_analysis: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Screen for new stock opportunities
+
+        Args:
+            portfolio_data: Current portfolio positions
+            market_analysis: Market sentiment and sector trends
+            news_analysis: News themes and opportunities
+
+        Returns:
+            New stock recommendations
+        """
 
         # Get current portfolio composition
         tickers = [pos['ticker'] for pos in portfolio_data.get('positions', [])]
@@ -116,19 +136,17 @@ SCREENING CRITERIA:
 
 Generate actionable buy recommendations with clear rationale."""
 
-        print(f"🔍 Stock Screener analyzing opportunities...")
+        self._log_progress("analyzing opportunities...", emoji="🔍")
 
         try:
-            response = self.llm_router.call(
-                model=self.model,
-                system_prompt=system_prompt,
+            # Call LLM using base class method
+            response = self._call_llm(
+                system_prompt=self.get_system_prompt(),
                 user_prompt=user_prompt,
-                temperature=0.6,
-                max_tokens=2500,
                 json_mode=True
             )
 
-            # Parse JSON response with robust fallback strategies
+            # Parse JSON response using base class method
             fallback = {
                 'buy_opportunities': [],
                 'sector_allocation': {},
@@ -138,19 +156,19 @@ Generate actionable buy recommendations with clear rationale."""
                 'fallback': True
             }
 
-            analysis = safe_json_parse(response, default=fallback)
+            analysis = self._parse_json_response(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'StockScreener'
             analysis['model_used'] = self.model
 
-            print(f"   ✓ Screened opportunities")
-            print(f"   Buy Opportunities: {len(analysis.get('buy_opportunities', []))}")
+            self._log_info(f"✓ Screened opportunities")
+            self._log_info(f"Buy Opportunities: {len(analysis.get('buy_opportunities', []))}")
 
             return analysis
 
         except Exception as e:
-            print(f"   ❌ Screening failed: {e}")
+            self._log_error(f"Screening failed: {e}")
             return {
                 'buy_opportunities': [],
                 'sector_allocation': {},
