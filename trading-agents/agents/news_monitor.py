@@ -5,40 +5,10 @@ Analyzes market news and sentiment for portfolio positions
 import json
 from typing import Dict, Any, List
 from utils.json_parser import safe_json_parse
+from agents.base_agent import BaseAgent
 
-
-class NewsMonitor:
-    """Monitors and analyzes news for trading signals"""
-
-    def __init__(self, llm_router):
-        """
-        Initialize News Monitor
-
-        Args:
-            llm_router: LLM router for model calls
-        """
-        self.llm_router = llm_router
-        self.model = "gemini-flash-or"  # Fast and cheap for news analysis
-
-    def analyze(
-        self,
-        portfolio_data: Dict[str, Any],
-        news_data: Dict[str, List[Dict[str, Any]]]
-    ) -> Dict[str, Any]:
-        """
-        Analyze news sentiment and impact on portfolio
-
-        Args:
-            portfolio_data: Current portfolio positions
-            news_data: News articles per ticker
-
-        Returns:
-            News analysis with sentiment scores and alerts
-        """
-        # Get tickers from portfolio
-        tickers = [pos['ticker'] for pos in portfolio_data.get('positions', [])]
-
-        system_prompt = """You are a News Analyst specializing in financial news and market sentiment.
+# System prompt for News Monitor
+NEWS_MONITOR_SYSTEM_PROMPT = """You are a News Analyst specializing in financial news and market sentiment.
 
 Your role is to:
 1. Analyze news articles for each stock position
@@ -65,6 +35,47 @@ Output strict JSON format:
   "opportunities": ["Positive catalysts or opportunities identified"]
 }"""
 
+
+class NewsMonitor(BaseAgent):
+    """Monitors and analyzes news for trading signals"""
+
+    def __init__(self, llm_router):
+        """
+        Initialize News Monitor
+
+        Args:
+            llm_router: LLM router for model calls
+        """
+        super().__init__(
+            llm_router=llm_router,
+            model="gemini-flash-or",  # Fast and cheap for news analysis
+            temperature=0.3,  # Lower for factual analysis
+            max_tokens=2500,
+            agent_name="News Monitor"
+        )
+
+    def get_system_prompt(self) -> str:
+        """Get system prompt for News Monitor"""
+        return NEWS_MONITOR_SYSTEM_PROMPT
+
+    def analyze(
+        self,
+        portfolio_data: Dict[str, Any],
+        news_data: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """
+        Analyze news sentiment and impact on portfolio
+
+        Args:
+            portfolio_data: Current portfolio positions
+            news_data: News articles per ticker
+
+        Returns:
+            News analysis with sentiment scores and alerts
+        """
+        # Get tickers from portfolio
+        tickers = [pos['ticker'] for pos in portfolio_data.get('positions', [])]
+
         user_prompt = f"""Analyze news for portfolio positions.
 
 Portfolio Tickers: {', '.join(tickers)}
@@ -78,19 +89,17 @@ Provide comprehensive news analysis focusing on:
 - Risk assessment
 - Trading implications"""
 
-        print(f"🔍 News Monitor analyzing {len(tickers)} positions...")
+        self._log_progress(f"analyzing {len(tickers)} positions...", emoji="📰")
 
         try:
-            response = self.llm_router.call(
-                model=self.model,
-                system_prompt=system_prompt,
+            # Call LLM using base class method
+            response = self._call_llm(
+                system_prompt=self.get_system_prompt(),
                 user_prompt=user_prompt,
-                temperature=0.3,  # Lower for factual analysis
-                max_tokens=2500,
                 json_mode=True
             )
 
-            # Parse JSON response with robust fallback strategies
+            # Parse JSON response using base class method
             fallback = {
                 'ticker_analysis': [],
                 'market_themes': [],
@@ -100,20 +109,20 @@ Provide comprehensive news analysis focusing on:
                 'fallback': True
             }
 
-            analysis = safe_json_parse(response, default=fallback)
+            analysis = self._parse_json_response(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'NewsMonitor'
             analysis['model_used'] = self.model
 
-            print(f"   ✓ Analysis complete")
-            print(f"   Urgent Alerts: {len(analysis.get('urgent_alerts', []))}")
-            print(f"   Opportunities: {len(analysis.get('opportunities', []))}")
+            self._log_info(f"✓ Analysis complete")
+            self._log_info(f"Urgent Alerts: {len(analysis.get('urgent_alerts', []))}")
+            self._log_info(f"Opportunities: {len(analysis.get('opportunities', []))}")
 
             return analysis
 
         except Exception as e:
-            print(f"   ❌ News analysis failed: {e}")
+            self._log_error(f"News analysis failed: {e}")
             return {
                 'ticker_analysis': [],
                 'market_themes': [],

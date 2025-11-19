@@ -1,0 +1,53 @@
+# V2 Trading System Requirements
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# LLM Providers
+openai>=1.10.0
+anthropic>=0.18.0
+google-generativeai>=0.3.0
+
+# Vector RAG (Critical for V2)
+chromadb>=0.4.22
+sentence-transformers>=2.3.1
+
+# Market Data
+yfinance>=0.2.36
+
+# SEC Filings (Optional)
+sec-api>=1.0.17
+
+# Prompt Compression (Optional)
+# llmlingua>=0.2.0  # Uncomment if you want 95% compression
+
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.21.1
+pytest-mock>=3.12.0
+
+# Rate Limiting
+ratelimit>=2.2.1
+
+# Data Processing
+pandas>=2.1.4
+numpy>=1.26.3
+
+# Async Support
+aiohttp>=3.9.1
+asyncio>=3.4.3
+
+# JSON Parsing
+jsonschema>=4.20.0
+
+# Logging
+colorlog>=6.8.0
+
+# Type Hints
+typing-extensions>=4.9.0
+
+# Optional Performance
+# torch>=2.1.0  # For sentence-transformers (if not using CPU-only)
+# faiss-cpu>=1.7.4  # Alternative to ChromaDB for vector search

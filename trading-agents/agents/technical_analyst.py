@@ -5,37 +5,10 @@ Analyzes price action, chart patterns, and technical indicators
 import json
 from typing import Dict, Any, List
 from utils.json_parser import safe_json_parse
+from agents.base_agent import BaseAgent
 
-
-class TechnicalAnalyst:
-    """Analyzes technical indicators and chart patterns"""
-
-    def __init__(self, llm_router):
-        """
-        Initialize Technical Analyst
-
-        Args:
-            llm_router: LLM router for model calls
-        """
-        self.llm_router = llm_router
-        self.model = "gemini-flash-or"  # Fast for technical analysis
-
-    def analyze(
-        self,
-        portfolio_data: Dict[str, Any],
-        market_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Analyze technical indicators for portfolio positions
-
-        Args:
-            portfolio_data: Current portfolio positions
-            market_data: Market indices and volatility data
-
-        Returns:
-            Technical analysis with signals and patterns
-        """
-        system_prompt = """You are a Technical Analyst specializing in chart patterns and technical indicators.
+# System prompt for Technical Analyst
+TECHNICAL_ANALYST_SYSTEM_PROMPT = """You are a Technical Analyst specializing in chart patterns and technical indicators.
 
 Your role is to:
 1. Analyze price action and momentum for each position
@@ -72,6 +45,44 @@ Output strict JSON format:
   "sector_rotation": "Technical signs of sector rotation"
 }"""
 
+
+class TechnicalAnalyst(BaseAgent):
+    """Analyzes technical indicators and chart patterns"""
+
+    def __init__(self, llm_router):
+        """
+        Initialize Technical Analyst
+
+        Args:
+            llm_router: LLM router for model calls
+        """
+        super().__init__(
+            llm_router=llm_router,
+            model="gemini-flash-or",  # Fast for technical analysis
+            temperature=0.4,
+            max_tokens=2500,
+            agent_name="Technical Analyst"
+        )
+
+    def get_system_prompt(self) -> str:
+        """Get system prompt for Technical Analyst"""
+        return TECHNICAL_ANALYST_SYSTEM_PROMPT
+
+    def analyze(
+        self,
+        portfolio_data: Dict[str, Any],
+        market_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Analyze technical indicators for portfolio positions
+
+        Args:
+            portfolio_data: Current portfolio positions
+            market_data: Market indices and volatility data
+
+        Returns:
+            Technical analysis with signals and patterns
+        """
         # Build context
         tickers = [pos['ticker'] for pos in portfolio_data.get('positions', [])]
         positions_summary = []
@@ -103,19 +114,17 @@ Based on current market conditions and technical indicators, provide:
 
 Note: Use reasonable technical assumptions for moving averages, RSI, MACD based on price action and market conditions."""
 
-        print(f"📈 Technical Analyst analyzing {len(tickers)} positions...")
+        self._log_progress(f"analyzing {len(tickers)} positions...", emoji="📈")
 
         try:
-            response = self.llm_router.call(
-                model=self.model,
-                system_prompt=system_prompt,
+            # Call LLM using base class method
+            response = self._call_llm(
+                system_prompt=self.get_system_prompt(),
                 user_prompt=user_prompt,
-                temperature=0.4,
-                max_tokens=2500,
                 json_mode=True
             )
 
-            # Parse JSON response with robust fallback strategies
+            # Parse JSON response using base class method
             fallback = {
                 'ticker_analysis': [],
                 'market_technical_condition': 'Analysis parsing failed',
@@ -125,13 +134,11 @@ Note: Use reasonable technical assumptions for moving averages, RSI, MACD based 
                 'fallback': True
             }
 
-            analysis = safe_json_parse(response, default=fallback)
+            analysis = self._parse_json_response(response, default=fallback)
 
             # Add metadata
             analysis['agent'] = 'TechnicalAnalyst'
             analysis['model_used'] = self.model
-
-            print(f"   ✓ Analysis complete")
 
             # Count signals
             signals = {}
@@ -139,12 +146,13 @@ Note: Use reasonable technical assumptions for moving averages, RSI, MACD based 
                 signal = ticker_analysis.get('technical_signal', 'HOLD')
                 signals[signal] = signals.get(signal, 0) + 1
 
-            print(f"   Signals: {signals}")
+            self._log_info(f"✓ Analysis complete")
+            self._log_info(f"Signals: {signals}")
 
             return analysis
 
         except Exception as e:
-            print(f"   ❌ Technical analysis failed: {e}")
+            self._log_error(f"Technical analysis failed: {e}")
             return {
                 'ticker_analysis': [],
                 'market_technical_condition': 'Analysis failed',

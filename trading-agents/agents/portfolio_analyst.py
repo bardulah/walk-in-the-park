@@ -11,6 +11,7 @@ from typing import Dict, Any
 from config.llm_router_simple import LLMRouter
 from config.settings import API_CONFIG, AGENT_CONFIG
 from utils.json_parser import safe_json_parse
+from agents.base_agent import BaseAgent
 
 # System prompt from AGENT_SPECIFICATIONS.md
 PORTFOLIO_ANALYST_SYSTEM_PROMPT = """# PORTFOLIO ANALYST AGENT
@@ -142,7 +143,7 @@ You must respond with valid JSON only (no markdown, no explanations):
 8. Generate concise key findings"""
 
 
-class PortfolioAnalyst:
+class PortfolioAnalyst(BaseAgent):
     """Portfolio Analyst Agent"""
 
     def __init__(self, llm_router: LLMRouter):
@@ -152,8 +153,17 @@ class PortfolioAnalyst:
         Args:
             llm_router: LLM router for making AI calls
         """
-        self.llm_router = llm_router
-        self.model = AGENT_CONFIG.portfolio_model  # gpt-4o-mini via OpenRouter
+        super().__init__(
+            llm_router=llm_router,
+            model=AGENT_CONFIG.portfolio_model,
+            temperature=0.3,  # Low temperature for factual analysis
+            max_tokens=1000,
+            agent_name="Portfolio Analyst"
+        )
+
+    def get_system_prompt(self) -> str:
+        """Get system prompt for Portfolio Analyst"""
+        return PORTFOLIO_ANALYST_SYSTEM_PROMPT
 
     def analyze(self, portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -165,8 +175,7 @@ class PortfolioAnalyst:
         Returns:
             Dict with portfolio health analysis
         """
-        print(f"\n🔍 Portfolio Analyst analyzing portfolio...")
-        print(f"   Model: {self.model}")
+        self._log_progress("analyzing portfolio...", emoji="🔍")
 
         # Generate user prompt
         user_prompt = f"""Analyze this portfolio and provide health assessment:
@@ -182,18 +191,15 @@ Calculate:
 Output JSON only (no additional text)."""
 
         try:
-            # Call LLM
-            response = self.llm_router.call(
-                model=self.model,
-                system_prompt=PORTFOLIO_ANALYST_SYSTEM_PROMPT,
+            # Call LLM using base class method
+            response = self._call_llm(
+                system_prompt=self.get_system_prompt(),
                 user_prompt=user_prompt,
-                temperature=0.3,  # Low temperature for factual analysis
-                max_tokens=1000,
                 json_mode=True
             )
 
-            # Parse JSON response with robust fallback strategies
-            result = safe_json_parse(
+            # Parse JSON response using base class method
+            result = self._parse_json_response(
                 response,
                 default=self._generate_fallback_analysis(portfolio_data)
             )
@@ -203,14 +209,14 @@ Output JSON only (no additional text)."""
             result['model_used'] = self.model
             result['timestamp'] = portfolio_data.get('timestamp')
 
-            print(f"   ✓ Analysis complete")
-            print(f"   Health Score: {result.get('portfolio_health_score', 0)}/100")
-            print(f"   Concentration Risk: {result.get('concentration_risk', 'UNKNOWN')}")
+            self._log_info(f"✓ Analysis complete")
+            self._log_info(f"Health Score: {result.get('portfolio_health_score', 0)}/100")
+            self._log_info(f"Concentration Risk: {result.get('concentration_risk', 'UNKNOWN')}")
 
             return result
 
         except Exception as e:
-            print(f"   ⚠️  Analysis failed: {e}")
+            self._log_info(f"⚠️  Analysis failed: {e}")
             return self._generate_fallback_analysis(portfolio_data)
 
     def _generate_fallback_analysis(self, portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
